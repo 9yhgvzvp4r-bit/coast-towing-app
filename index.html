@@ -35,6 +35,7 @@
     .flag { display: inline-block; padding: 4px 8px; border-radius: 4px; color: white; font-size: 11px; margin-right: 5px; }
     .flag-hold { background: #ef4444; }
     .flag-ev { background: #8b5cf6; }
+    .flag-storage { background: #10b981; }
     .btn-small { padding: 6px 12px; font-size: 12px; }
     .btn-delete { background: #ef4444; color: white; }
     .btn-view { background: #3b82f6; color: white; }
@@ -77,6 +78,9 @@
     .detail-item label { font-weight: bold; color: #666; font-size: 12px; }
     .detail-item p { font-size: 16px; margin-top: 5px; }
     .receipt-preview { max-width: 200px; max-height: 200px; margin-top: 10px; border-radius: 4px; }
+    .inventory-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+    .inventory-tab { padding: 10px 20px; background: #374151; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+    .inventory-tab.active { background: #3b82f6; }
   </style>
 </head>
 <body>
@@ -143,23 +147,57 @@
       <!-- INVENTORY -->
       <div id="inventory" class="content hidden">
         <h2>📦 Inventory</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Plate</th>
-              <th>Customer</th>
-              <th>Vehicle</th>
-              <th class="location">📍 LOCATION</th>
-              <th>Days Held</th>
-              <th>Status</th>
-              <th>Payment</th>
-              <th>Invoice</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="inventoryTable">
-          </tbody>
-        </table>
+        
+        <div class="inventory-tabs">
+          <button class="inventory-tab active" onclick="switchInventoryView('active')">🚗 Active Inventory</button>
+          <button class="inventory-tab" onclick="switchInventoryView('processed')">✅ Processed Inventory</button>
+        </div>
+
+        <!-- ACTIVE INVENTORY -->
+        <div id="activeInventoryView">
+          <h3>Active Inventory</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Plate</th>
+                <th>Customer</th>
+                <th>Vehicle</th>
+                <th class="location">📍 LOCATION</th>
+                <th>Days Held</th>
+                <th>Status</th>
+                <th>Payment</th>
+                <th>Flags</th>
+                <th>Invoice</th>
+                <th>Process</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="activeInventoryTable">
+            </tbody>
+          </table>
+        </div>
+
+        <!-- PROCESSED INVENTORY -->
+        <div id="processedInventoryView" style="display: none;">
+          <h3>Processed Inventory</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Plate</th>
+                <th>Customer</th>
+                <th>Vehicle</th>
+                <th class="location">📍 LOCATION</th>
+                <th>Status</th>
+                <th>Payment</th>
+                <th>Flags</th>
+                <th>Invoice</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="processedInventoryTable">
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <!-- VEHICLE DETAIL VIEW -->
@@ -384,7 +422,13 @@
 
         <!-- INVENTORY OPTIONS -->
         <div class="full-width form-section">
-          <h4>Add to Inventory</h4>
+          <h4>Vehicle Flags & Inventory Options</h4>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+            <label><input type="checkbox" id="inv_policeHold"> 🚔 POLICE HOLD</label>
+            <label><input type="checkbox" id="inv_inStorage"> 📦 IN STORAGE</label>
+            <label><input type="checkbox" id="inv_isEV"> ⚡ ELECTRIC VEHICLE (EV)</label>
+          </div>
+          
           <label><input type="checkbox" id="inv_addToInventory"> ✅ Add this vehicle to inventory</label>
           
           <div id="inventoryOptions" style="display: none; margin-top: 15px;">
@@ -424,8 +468,8 @@
     let currentUser = null;
     let vehicles = JSON.parse(localStorage.getItem('vehicles')) || [];
     let selectedVehicle = null;
+    let currentInventoryView = 'active';
 
-    // Show/hide inventory options when checkbox is clicked
     document.addEventListener('change', function(e) {
       if (e.target.id === 'inv_addToInventory') {
         const options = document.getElementById('inventoryOptions');
@@ -475,7 +519,27 @@
       document.getElementById(tab).classList.remove('hidden');
       event.target.classList.add('active');
       if (tab === 'dashboard') updateDashboard();
-      if (tab === 'inventory') updateInventory();
+      if (tab === 'inventory') {
+        updateInventory();
+        currentInventoryView = 'active';
+        switchInventoryView('active');
+      }
+    }
+
+    function switchInventoryView(view) {
+      currentInventoryView = view;
+      document.querySelectorAll('.inventory-tab').forEach(el => el.classList.remove('active'));
+      event.target.classList.add('active');
+
+      if (view === 'active') {
+        document.getElementById('activeInventoryView').style.display = 'block';
+        document.getElementById('processedInventoryView').style.display = 'none';
+        updateActiveInventory();
+      } else {
+        document.getElementById('activeInventoryView').style.display = 'none';
+        document.getElementById('processedInventoryView').style.display = 'block';
+        updateProcessedInventory();
+      }
     }
 
     function closeModal(modalId) {
@@ -509,6 +573,9 @@
       document.getElementById('inv_vin').value = vehicle.vin || '';
       document.getElementById('inv_plate').value = vehicle.plate || '';
       document.getElementById('inv_location').value = vehicle.location || '';
+      document.getElementById('inv_policeHold').checked = vehicle.policeHold || false;
+      document.getElementById('inv_inStorage').checked = vehicle.inStorage || false;
+      document.getElementById('inv_isEV').checked = vehicle.isEV || false;
       document.getElementById('inv_addToInventory').checked = false;
       document.getElementById('inventoryOptions').style.display = 'none';
     }
@@ -530,9 +597,15 @@
       };
 
       const addToInventory = document.getElementById('inv_addToInventory').checked;
+      const policeHold = document.getElementById('inv_policeHold').checked;
+      const inStorage = document.getElementById('inv_inStorage').checked;
+      const isEV = document.getElementById('inv_isEV').checked;
 
       if (selectedVehicle) {
         selectedVehicle.invoice = invoice;
+        selectedVehicle.policeHold = policeHold;
+        selectedVehicle.inStorage = inStorage;
+        selectedVehicle.isEV = isEV;
         saveData();
       } else {
         if (addToInventory) {
@@ -553,12 +626,14 @@
             location: location,
             arrived: new Date().toISOString().split('T')[0],
             status: status || 'In Storage',
-            policeHold: false,
-            isEV: false,
+            policeHold: policeHold,
+            inStorage: inStorage,
+            isEV: isEV,
             hasKeys: true,
             paymentStatus: 'Unpaid',
             datePaid: null,
             receipt: null,
+            processed: false,
             invoice: invoice
           };
           vehicles.push(newVehicle);
@@ -579,15 +654,27 @@
     }
 
     function updateDashboard() {
-      document.getElementById('totalVehicles').textContent = vehicles.length;
-      document.getElementById('policeHolds').textContent = vehicles.filter(v => v.policeHold).length;
-      document.getElementById('evCount').textContent = vehicles.filter(v => v.isEV).length;
-      document.getElementById('inStorage').textContent = vehicles.filter(v => v.status.toLowerCase().includes('storage')).length;
+      const totalVehicles = vehicles.length;
+      const policeHolds = vehicles.filter(v => v.policeHold).length;
+      const evCount = vehicles.filter(v => v.isEV).length;
+      const inStorage = vehicles.filter(v => v.inStorage && !v.processed).length;
+
+      document.getElementById('totalVehicles').textContent = totalVehicles;
+      document.getElementById('policeHolds').textContent = policeHolds;
+      document.getElementById('evCount').textContent = evCount;
+      document.getElementById('inStorage').textContent = inStorage;
     }
 
     function updateInventory() {
-      const table = document.getElementById('inventoryTable');
-      table.innerHTML = vehicles.map(v => `
+      updateActiveInventory();
+      updateProcessedInventory();
+    }
+
+    function updateActiveInventory() {
+      const activeVehicles = vehicles.filter(v => !v.processed);
+      const table = document.getElementById('activeInventoryTable');
+      
+      table.innerHTML = activeVehicles.map(v => `
         <tr onclick="viewVehicleDetail(${v.id})">
           <td class="plate">${v.plate}</td>
           <td>${v.customer}</td>
@@ -600,10 +687,54 @@
               ${v.paymentStatus}
             </span>
           </td>
+          <td>
+            ${v.policeHold ? '<span class="flag flag-hold">🚔 HOLD</span>' : ''}
+            ${v.isEV ? '<span class="flag flag-ev">⚡ EV</span>' : ''}
+            ${v.inStorage ? '<span class="flag flag-storage">📦 STORAGE</span>' : ''}
+          </td>
+          <td><button class="btn-small btn-view" onclick="viewInvoice(event, ${v.id})">📄 View</button></td>
+          <td><label style="margin: 0;"><input type="checkbox" onchange="processVehicle(event, ${v.id})" style="width: auto; padding: 0; margin: 0;"> ✅</label></td>
+          <td><button class="btn-small btn-delete" onclick="deleteVehicle(event, ${v.id})">❌ Delete</button></td>
+        </tr>
+      `).join('');
+    }
+
+    function updateProcessedInventory() {
+      const processedVehicles = vehicles.filter(v => v.processed);
+      const table = document.getElementById('processedInventoryTable');
+      
+      table.innerHTML = processedVehicles.map(v => `
+        <tr onclick="viewVehicleDetail(${v.id})">
+          <td class="plate">${v.plate}</td>
+          <td>${v.customer}</td>
+          <td>${v.vehicle}</td>
+          <td class="location">📍 ${v.location}</td>
+          <td>${v.status}</td>
+          <td>
+            <span style="background: ${v.paymentStatus === 'Paid' ? '#10b981' : '#ef4444'}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
+              ${v.paymentStatus}
+            </span>
+          </td>
+          <td>
+            ${v.policeHold ? '<span class="flag flag-hold">🚔 HOLD</span>' : ''}
+            ${v.isEV ? '<span class="flag flag-ev">⚡ EV</span>' : ''}
+            ${v.inStorage ? '<span class="flag flag-storage">📦 STORAGE</span>' : ''}
+          </td>
           <td><button class="btn-small btn-view" onclick="viewInvoice(event, ${v.id})">📄 View</button></td>
           <td><button class="btn-small btn-delete" onclick="deleteVehicle(event, ${v.id})">❌ Delete</button></td>
         </tr>
       `).join('');
+    }
+
+    function processVehicle(event, id) {
+      event.stopPropagation();
+      const vehicle = vehicles.find(v => v.id === id);
+      if (vehicle) {
+        vehicle.processed = true;
+        saveData();
+        updateInventory();
+        updateDashboard();
+      }
     }
 
     function viewVehicleDetail(id) {
@@ -656,6 +787,15 @@
             </div>
           </div>
 
+          <div style="margin: 20px 0; padding: 20px; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107;">
+            <h4>Flags</h4>
+            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+              <label><input type="checkbox" ${selectedVehicle.policeHold ? 'checked' : ''} onchange="updateVehicleField(${selectedVehicle.id}, 'policeHold', this.checked)"> 🚔 Police Hold</label>
+              <label><input type="checkbox" ${selectedVehicle.inStorage ? 'checked' : ''} onchange="updateVehicleField(${selectedVehicle.id}, 'inStorage', this.checked)"> 📦 In Storage</label>
+              <label><input type="checkbox" ${selectedVehicle.isEV ? 'checked' : ''} onchange="updateVehicleField(${selectedVehicle.id}, 'isEV', this.checked)"> ⚡ Electric Vehicle</label>
+            </div>
+          </div>
+
           ${selectedVehicle.paymentStatus === 'Paid' ? `
             <div style="margin: 20px 0; padding: 20px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #3b82f6;">
               <h4>Payment Details</h4>
@@ -690,6 +830,7 @@
       if (vehicle) {
         vehicle[field] = value;
         saveData();
+        updateDashboard();
         viewVehicleDetail(id);
       }
     }
